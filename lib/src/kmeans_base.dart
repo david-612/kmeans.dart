@@ -44,7 +44,7 @@ class Clusters {
   late final double inertia = (() {
     double sum = 0.0;
     for (int i = 0; i < points.length; i++) {
-      sum += _distSquared(points[i], means[clusters[i]], ignoredDims);
+      sum += _haversineDistance(points[i], means[clusters[i]], ignoredDims);
     }
     return sum;
   })();
@@ -68,7 +68,8 @@ class Clusters {
       for (int i = 0; i < points.length; i++) {
         double distSum = 0.0;
         for (int j = 0; j < clusterPoints[k].length; j++) {
-          distSum += _distSquared(points[i], clusterPoints[k][j], ignoredDims);
+          distSum +=
+              _haversineDistance(points[i], clusterPoints[k][j], ignoredDims);
         }
         meanClusterDist[k][i] = clusterPoints[k].length > 1
             ? distSum / (clusterPoints[k].length - 1).toDouble()
@@ -136,7 +137,7 @@ class Clusters {
         if (clusters[i] == k) {
           continue;
         }
-        final double d = _distSquared(points[i], means[k], ignoredDims);
+        final double d = _haversineDistance(points[i], means[k], ignoredDims);
         if (d < minDist) {
           minDist = d;
           minNeighborK = k;
@@ -149,7 +150,7 @@ class Clusters {
       if (neighborSize <= 100) {
         double sum = 0.0;
         for (int j = 0; j < cluster.length; j++) {
-          sum += _distSquared(points[i], cluster[j], ignoredDims);
+          sum += _haversineDistance(points[i], cluster[j], ignoredDims);
         }
         minNeighborDist[i] = sum / cluster.length.toDouble();
       } else {
@@ -157,7 +158,7 @@ class Clusters {
         double sum = 0.0;
         for (int j = 0; j < 100; j++) {
           final int sample = rng.nextInt(neighborSize);
-          sum += _distSquared(points[i], cluster[sample], ignoredDims);
+          sum += _haversineDistance(points[i], cluster[sample], ignoredDims);
         }
         minNeighborDist[i] = sum / 100.0;
       }
@@ -177,7 +178,8 @@ class Clusters {
       if (clusterSize <= 100) {
         double sum = 0.0;
         for (int j = 0; j < clusterPoints[k].length; j++) {
-          sum += _distSquared(points[i], clusterPoints[k][j], ignoredDims);
+          sum +=
+              _haversineDistance(points[i], clusterPoints[k][j], ignoredDims);
         }
         meanClusterDist[i] = clusterPoints[k].length > 1
             ? sum / (clusterPoints[k].length - 1).toDouble()
@@ -186,7 +188,8 @@ class Clusters {
         double sum = 0.0;
         for (int j = 0; j < 100; j++) {
           final int sample = rng.nextInt(clusterSize);
-          sum += _distSquared(points[i], clusterPoints[k][sample], ignoredDims);
+          sum += _haversineDistance(
+              points[i], clusterPoints[k][sample], ignoredDims);
         }
         meanClusterDist[i] = sum / 100;
       }
@@ -215,7 +218,7 @@ class Clusters {
     double minDist = double.maxFinite;
     int minK = -1;
     for (int j = 0; j < means.length; j++) {
-      final double dist = _distSquared(point, means[j], ignoredDims);
+      final double dist = _haversineDistance(point, means[j], ignoredDims);
       if (dist < minDist) {
         minDist = dist;
         minK = j;
@@ -241,7 +244,7 @@ class Clusters {
     );
 
     for (int i = 0; i < points.length; i++) {
-      final double dist = _distSquared(point, points[i], ignoredDims);
+      final double dist = _haversineDistance(point, points[i], ignoredDims);
       if (dist < neighbors[k - 1].key) {
         neighbors.add(MapEntry<double, int>(dist, clusters[i]));
         neighbors.sort((MapEntry<double, int> a, MapEntry<double, int> b) {
@@ -324,7 +327,7 @@ class KMeansInitializers {
       final List<double> ds = points.map((List<double> p) {
         double minDist = double.maxFinite;
         for (int j = 0; j < i; j++) {
-          final double d = _distSquared(means[j], p, ignoredDims);
+          final double d = _haversineDistance(means[j], p, ignoredDims);
           if (d < minDist) {
             minDist = d;
           }
@@ -339,6 +342,9 @@ class KMeansInitializers {
       while (true) {
         cum += ps[pointIndex];
         if (cum > r) {
+          break;
+        }
+        if (pointIndex == ps.length - 1) {
           break;
         }
         pointIndex++;
@@ -450,7 +456,7 @@ class KMeans {
   }
 
   /// Numbers closer together than this are considered equivalent.
-  static const double defaultPrecision = 1e-4;
+  static const double defaultPrecision = 150;
   static const List<int> _emptyList = <int>[];
 
   /// The points to cluster.
@@ -556,10 +562,11 @@ class KMeans {
   void _populateClusters(List<List<double>> means, List<int> outClusters) {
     for (int i = 0; i < _scaledPoints.length; i++) {
       int kidx = 0;
-      double kdist = _distSquared(_scaledPoints[i], means[0], ignoredDims);
+      double kdist =
+          _haversineDistance(_scaledPoints[i], means[0], ignoredDims);
       for (int j = 1; j < means.length; j++) {
         final double dist =
-            _distSquared(_scaledPoints[i], means[j], ignoredDims);
+            _haversineDistance(_scaledPoints[i], means[j], ignoredDims);
         if (dist < kdist) {
           kidx = j;
           kdist = dist;
@@ -623,4 +630,20 @@ double _distSquared(List<double> a, List<double> b, List<int> ignoredDims) {
   }
 
   return sum;
+}
+
+double _haversineDistance(
+    List<double> a, List<double> b, List<int> ignoredDims) {
+  assert(a.length == b.length);
+
+  var EarthRadius = 6378137.0; // WGS84 major axis
+  double lat1 = a[0] * pi / 180;
+  double lon1 = a[1] * pi / 180;
+  double lat2 = b[0] * pi / 180;
+  double lon2 = b[1] * pi / 180;
+  double distance = 2 *
+      EarthRadius *
+      asin(sqrt(pow(sin(lat2 - lat1) / 2, 2) +
+          cos(lat1) * cos(lat2) * pow(sin(lon2 - lon1) / 2, 2)));
+  return distance;
 }
